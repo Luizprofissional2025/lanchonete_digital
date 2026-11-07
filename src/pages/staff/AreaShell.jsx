@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { api, auth } from '../../services/api.js'
 import { usePolling } from '../../hooks/usePolling.js'
-import { beep, soundPrefs } from '../../utils/sound.js'
+import { beep, beepReady, soundPrefs } from '../../utils/sound.js'
 import { useToast } from '../../components/Toast.jsx'
 import '../admin/Dashboard.css'
 import '../CustomerIdentification.css'
@@ -84,6 +84,7 @@ function Frame({ area, user, onLogout }) {
   const [open, setOpen] = useState(false)
   const [sound, setSound] = useState({ on: soundPrefs.enabled(), tone: soundPrefs.tone() })
   const seen = useRef(null)
+  const seenReady = useRef(null)
 
   const alertsState = usePolling(() => (area.alerts ? api.get('/alerts/pending', { staff: true }) : Promise.resolve([])), 5000)
   const alerts = alertsState.data || []
@@ -94,6 +95,20 @@ function Frame({ area, user, onLogout }) {
     seen.current = new Set(pendingIds)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [alertsState.data])
+
+  // Salão: toca um som quando a cozinha marca um pedido como pronto
+  const readyState = usePolling(() => (area.alerts ? api.get('/orders?status=ready', { staff: true }) : Promise.resolve([])), 5000)
+  const readyOrders = readyState.data || []
+  useEffect(() => {
+    if (!area.alerts || !readyState.data) return
+    const fresh = readyState.data.filter((o) => seenReady.current && !seenReady.current.has(o.id))
+    if (fresh.length) {
+      beepReady()
+      toast(`✅ Pedido pronto — Mesa ${fresh[0].tableNumber}${fresh.length > 1 ? ` (+${fresh.length - 1})` : ''}`, 'success')
+    }
+    seenReady.current = new Set(readyState.data.map((o) => o.id))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [readyState.data])
 
   const seg = pathname.split('/')[2] || ''
   const page = area.nav.find((n) => n.path === seg)
@@ -134,6 +149,9 @@ function Frame({ area, user, onLogout }) {
         <h1 className="admin-title">{page.label}</h1>
         {area.alerts && pendingIds.length > 0 && page.path !== 'alertas' && (
           <div className="alert-banner" role="alert">🔔 {pendingIds.length} chamado(s) de garçom pendente(s)</div>
+        )}
+        {area.alerts && readyOrders.length > 0 && page.path !== 'pedidos' && (
+          <div className="alert-banner" role="status">✅ {readyOrders.length} pedido(s) pronto(s) para entregar</div>
         )}
         {area.bare && soundBox && <div className="bare-sound">{soundBox}</div>}
         {page.render(props)}
