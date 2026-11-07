@@ -4,7 +4,7 @@ import { encryptField, hmacHash, randomToken, sha256 } from '../../lib/crypto.js
 import { HttpError } from '../../lib/http.js'
 import { query } from '../../lib/neon.js'
 import {
-  formatPhoneE164, maskCPF, maskPhone, sanitizeInput, validateCPF, validateEmail, validateFullName,
+  formatPhoneE164, maskPhone, sanitizeInput, validateEmail, validateFullName,
 } from '../../lib/validation.js'
 import { clientIp, rateLimit, route } from '../router.js'
 import { num, requireSession, sessionToken } from '../common.js'
@@ -64,14 +64,13 @@ route('GET', '/public/table/:token', async (ctx) => {
   return { restaurantName: t.restaurant_name, restaurantCode: t.restaurant_code, tableNumber: num(t.number), tableCode: t.identifier }
 })
 
-// ------------------------------------------------------------------ identificação (nome + CPF + celular)
+// ------------------------------------------------------------------ identificação (nome + celular; sem CPF)
 route('POST', '/customers/identify', async (ctx) => {
-  const { token, name, cpf, phone, consent } = ctx.body
+  const { token, name, phone, consent } = ctx.body
   rateLimit(`identify:${clientIp(ctx.req)}`, 30, 60_000)
 
   if (consent !== true) throw new HttpError(422, 'É necessário aceitar o aviso de privacidade')
   if (!validateFullName(name)) throw new HttpError(422, 'Informe o nome completo')
-  if (typeof cpf !== 'string' || !validateCPF(cpf)) throw new HttpError(422, 'CPF inválido')
   let phoneE164
   try {
     phoneE164 = formatPhoneE164(phone)
@@ -81,17 +80,17 @@ route('POST', '/customers/identify', async (ctx) => {
 
   const table = await tableByToken(token)
   const cleanName = sanitizeInput(name)
-  const cpfDigits = cpf.replace(/\D/g, '')
 
-  // Cliente existente NÃO tem nome/telefone sobrescritos por quem apenas informa o CPF
+  // Cliente existente NÃO tem nome/telefone sobrescritos por quem apenas informa o celular
   // (evita que terceiros troquem o número que receberá a conta). Correções ficam com o restaurante.
   const [customer] = await query(
     `INSERT INTO customers (restaurant_id, name, cpf_encrypted, cpf_hash, cpf_masked,
                             phone_encrypted, phone_masked, consent_at, consent_version)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, now(), $8)
+     VALUES ($1, $2, NULL, $3, NULL, $4, $5, now(), $6)
      ON CONFLICT (restaurant_id, cpf_hash) DO UPDATE SET updated_at = now()
      RETURNING id, identifier`,
-    [table.restaurant_id, cleanName, encryptField(cpfDigits), hmacHash(cpfDigits), maskCPF(cpfDigits),
+    // cpf_hash guarda o HMAC do CELULAR (chave que identifica o cliente); não há CPF em nenhuma coluna.
+    [table.restaurant_id, cleanName, hmacHash(`tel:${phoneE164}`),
      encryptField(phoneE164), maskPhone(phoneE164), CONSENT_VERSION]
   )
 
