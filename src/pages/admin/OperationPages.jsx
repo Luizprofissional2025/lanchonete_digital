@@ -192,7 +192,7 @@ export function AccountModal({ id, toast, user, onClose }) {
             return (
               <div className="consumer" key={c.customer}>
                 <div className="consumer-head">
-                  <strong>{c.name} <span className="muted small">CPF {c.cpfMasked} · {c.phoneMasked}</span></strong>
+                  <strong>{c.name} <span className="muted small">{c.phoneMasked}</span></strong>
                   <span>Total {brl(c.due)} · Pago {brl(c.paid)} · <strong>Pendente {brl(c.pending)}</strong></span>
                 </div>
                 <ul>
