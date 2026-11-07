@@ -369,7 +369,7 @@ route('GET', '/customers', async (ctx) => {
   const u = await staff(ctx, ROLES.management)
   const q = ctx.query.q ? `%${ctx.query.q.slice(0, 80)}%` : null
   const rows = await query(
-    `SELECT c.identifier, c.name, c.cpf_masked, c.phone_masked, c.created_at,
+    `SELECT c.identifier, c.name, c.phone_masked, c.created_at,
             (SELECT count(*) FROM sessions s WHERE s.customer_id = c.id) AS visits,
             (SELECT count(*) FROM orders o WHERE o.customer_id = c.id AND o.status <> 'cancelled') AS orders,
             (SELECT COALESCE(sum(o.total), 0) FROM orders o WHERE o.customer_id = c.id AND o.status <> 'cancelled') AS consumed,
@@ -380,7 +380,7 @@ route('GET', '/customers', async (ctx) => {
     [u.restaurantId, q]
   )
   return rows.map((c) => ({
-    id: c.identifier, name: c.name, cpf: c.cpf_masked, phone: c.phone_masked, visits: num(c.visits),
+    id: c.identifier, name: c.name, phone: c.phone_masked, visits: num(c.visits),
     orders: num(c.orders), consumed: num(c.consumed), lastVisit: c.last_visit, createdAt: c.created_at,
   }))
 })
