@@ -250,3 +250,42 @@ route('POST', '/accounts/:id/fee', async (ctx) => {
     [u.restaurantId, u.id, ctx.params.id, customer, remove, reason])
   return r.r
 })
+
+// ------------------------------------------------------------------ limpeza de dados de teste (somente administrador)
+// Apaga os pedidos (e seus itens) criados no período e, se pedido, os pagamentos confirmados no período.
+// Não é possível desfazer. Contas e mesas não são removidas.
+route('POST', '/reports/purge-orders', async (ctx) => {
+  const u = await staff(ctx, ['admin'])
+  const { from, to, confirm, includePayments } = ctx.body
+  if (confirm !== 'APAGAR') throw new HttpError(422, 'Digite APAGAR para confirmar')
+  if (typeof from !== 'string' || typeof to !== 'string' || !isoDate.test(from) || !isoDate.test(to) || from > to) {
+    throw new HttpError(422, 'Período inválido')
+  }
+  if ((Date.parse(to) - Date.parse(from)) / 86_400_000 > 366) throw new HttpError(422, 'Período máximo de 366 dias')
+  const withPayments = includePayments === true
+
+  const [r] = await query(
+    `WITH rng AS (
+        SELECT ($2::date)::timestamp AT TIME ZONE $4 AS a, (($3::date + 1)::timestamp AT TIME ZONE $4) AS b
+      ), o AS (
+        SELECT o.id FROM orders o, rng
+         WHERE o.restaurant_id = $1 AND o.created_at >= rng.a AND o.created_at < rng.b
+      ), di AS (
+        DELETE FROM order_items WHERE order_id IN (SELECT id FROM o) RETURNING 1
+      ), dord AS (
+        DELETE FROM orders WHERE id IN (SELECT id FROM o) AND restaurant_id = $1 RETURNING 1
+      ), dp AS (
+        DELETE FROM payments x USING rng
+         WHERE $5::boolean AND x.restaurant_id = $1 AND x.confirmed_at >= rng.a AND x.confirmed_at < rng.b RETURNING 1
+      )
+      SELECT (SELECT count(*) FROM dord) AS orders, (SELECT count(*) FROM di) AS items, (SELECT count(*) FROM dp) AS payments`,
+    [u.restaurantId, from, to, TZ, withPayments]
+  )
+  const result = { orders: num(r.orders), items: num(r.items), payments: num(r.payments), from, to }
+  try {
+    await query('SELECT app_audit($1, $2, $3, $4, $5, $6, $7::jsonb)', [
+      u.restaurantId, 'user', String(u.id), 'orders.purge', 'restaurant', String(u.restaurantId), JSON.stringify(result),
+    ])
+  } catch { /* o registro de auditoria não deve desfazer a limpeza */ }
+  return result
+})
