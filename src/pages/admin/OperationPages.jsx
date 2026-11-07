@@ -296,7 +296,11 @@ export function OrdersPage({ toast, user }) {
                   <td><StatusBadge tone={orderTone[o.status]}>{ORDER_STATUS[o.status]}</StatusBadge></td>
                   <td>{['delivered', 'cancelled'].includes(o.status) ? '—' : <StatusBadge tone={waitTone[o.waitLevel]}>{minutes(o.waitMinutes)}</StatusBadge>}</td>
                   <td className="row-actions">
-                    {next[o.status] && <button className="btn btn-sm btn-primary" disabled={busy} onClick={() => run(() => api.patch(`/orders/${o.id}/status`, { status: next[o.status] }, S))}>→ {ORDER_STATUS[next[o.status]]}</button>}
+                    {next[o.status] && <button className="btn btn-sm btn-primary" disabled={busy} onClick={() => run(async () => {
+                      const r = await api.patch(`/orders/${o.id}/status`, { status: next[o.status] }, S)
+                      if (r?.waiterAssumed) toast(`Você assumiu a mesa ${o.tableNumber}`, 'success')
+                      return r
+                    })}>→ {ORDER_STATUS[next[o.status]]}</button>}
                     {['received', 'preparing', 'ready'].includes(o.status) && <button className="btn btn-sm btn-danger" disabled={busy} onClick={() => window.confirm(`Cancelar ${o.id}?`) && run(() => api.patch(`/orders/${o.id}/status`, { status: 'cancelled' }, S), 'Pedido cancelado')}>Cancelar</button>}
                   </td>
                 </tr>
