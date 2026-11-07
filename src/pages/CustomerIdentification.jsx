@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { formatCPF, validateCPF, validateFullName, validatePhone } from '../../lib/validation.js'
+import { validateFullName, validatePhone } from '../../lib/validation.js'
 import { ApiError, api, customerSession } from '../services/api.js'
 import { maskPhoneInput } from '../utils/format.js'
 import './CustomerIdentification.css'
@@ -11,7 +11,7 @@ function CustomerIdentification() {
   const navigate = useNavigate()
   const [table, setTable] = useState(null)
   const [invalid, setInvalid] = useState(false)
-  const [form, setForm] = useState({ name: '', cpf: '', phone: '', consent: false })
+  const [form, setForm] = useState({ name: '', phone: '', consent: false })
   const [errors, setErrors] = useState({})
   const [serverError, setServerError] = useState('')
   const [loading, setLoading] = useState(false)
@@ -46,7 +46,6 @@ function CustomerIdentification() {
   const validate = () => {
     const e = {}
     if (!validateFullName(form.name)) e.name = 'Informe seu nome completo'
-    if (!validateCPF(form.cpf)) e.cpf = 'CPF inválido'
     if (!validatePhone(form.phone)) e.phone = 'Informe um celular com DDD (ex.: (21) 99999-9999)'
     if (!form.consent) e.consent = 'Para continuar, aceite o uso dos dados'
     setErrors(e)
@@ -59,7 +58,7 @@ function CustomerIdentification() {
     setLoading(true)
     try {
       const data = await api.post('/customers/identify', {
-        token, name: form.name, cpf: form.cpf, phone: form.phone, consent: form.consent,
+        token, name: form.name, phone: form.phone, consent: form.consent,
       })
       customerSession.save(data.sessionToken, token)
       navigate('/cardapio')
@@ -97,14 +96,6 @@ function CustomerIdentification() {
           </div>
 
           <div className="form-group">
-            <label htmlFor="cpf">CPF</label>
-            <input id="cpf" inputMode="numeric" autoComplete="off" value={formatCPF(form.cpf)}
-              onChange={(e) => set('cpf', e.target.value.replace(/\D/g, '').slice(0, 11))}
-              placeholder="000.000.000-00" className={errors.cpf ? 'error' : ''} />
-            {errors.cpf && <span className="error-message">{errors.cpf}</span>}
-          </div>
-
-          <div className="form-group">
             <label htmlFor="phone">Celular com WhatsApp</label>
             <input id="phone" type="tel" inputMode="tel" autoComplete="tel" value={form.phone}
               onChange={(e) => set('phone', maskPhoneInput(e.target.value))}
@@ -114,7 +105,7 @@ function CustomerIdentification() {
 
           <div className="privacy-notice">
             <strong>Por que pedimos esses dados?</strong> Para identificar quem fez cada pedido, dividir a conta da mesa
-            e enviar o demonstrativo do seu consumo por WhatsApp. Guardamos CPF e celular protegidos (criptografados) e só
+            e enviar o demonstrativo do seu consumo por WhatsApp. Guardamos o celular protegido (criptografado) e só
             funcionários autorizados acessam. Você pode pedir correção ou exclusão ao restaurante.
           </div>
 
