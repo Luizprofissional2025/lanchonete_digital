@@ -1,6 +1,6 @@
 # SABOR DIGITAL
 
-Cardápio digital por QR Code (um QR por mesa) e gestão de restaurante: pedidos, cozinha, chamado de garçom, garçom por mesa, taxa de serviço, contas por cliente (CPF), pagamentos, WhatsApp (wa.me), vendas e QR Codes.
+Cardápio digital por QR Code (um QR por mesa) e gestão de restaurante: pedidos, cozinha, chamado de garçom, garçom por mesa, taxa de serviço, contas por cliente (identificado pelo celular), pagamentos, WhatsApp (wa.me), vendas e QR Codes.
 
 Stack: React 18 + Vite · Vercel Serverless (uma função, `api/[...route].js`) · Neon Postgres (regras críticas em PL/pgSQL).
 
@@ -54,4 +54,4 @@ Stack: React 18 + Vite · Vercel Serverless (uma função, `api/[...route].js`) 
 Leia **docs/DEPLOY.md**: GitHub, Neon, variáveis e primeiro acesso.
 
 ## Segurança e LGPD
-CPF e celular criptografados (AES-256-GCM) com hash HMAC para busca, sempre mascarados na tela; o QR leva só um token aleatório da mesa; isolamento por restaurante; perfil conferido no servidor a cada chamada; preços lidos do banco; pedidos idempotentes; senhas com scrypt.
+O sistema não coleta CPF. O celular é criptografado (AES-256-GCM), com hash HMAC para busca, e sempre mascarado na tela; o QR leva só um token aleatório da mesa; isolamento por restaurante; perfil conferido no servidor a cada chamada; preços lidos do banco; pedidos idempotentes; senhas com scrypt.
