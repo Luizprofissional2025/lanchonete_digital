@@ -281,15 +281,15 @@ export function CustomersPage() {
       <div className="toolbar"><input placeholder="Buscar por nome ou código" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Buscar cliente" /></div>
       <div className="panel table-scroll">
         <table className="data-table">
-          <thead><tr><th>Código</th><th>Nome</th><th>CPF</th><th>Celular</th><th>Visitas</th><th>Pedidos</th><th>Consumo</th><th>Última visita</th></tr></thead>
+          <thead><tr><th>Código</th><th>Nome</th><th>Celular</th><th>Visitas</th><th>Pedidos</th><th>Consumo</th><th>Última visita</th></tr></thead>
           <tbody>
             {(st.data || []).map((c) => (
-              <tr key={c.id}><td>{c.id}</td><td>{c.name}</td><td>{c.cpf}</td><td>{c.phone}</td><td>{c.visits}</td><td>{c.orders}</td><td>{brl(c.consumed)}</td><td>{dateTime(c.lastVisit)}</td></tr>
+              <tr key={c.id}><td>{c.id}</td><td>{c.name}</td><td>{c.phone}</td><td>{c.visits}</td><td>{c.orders}</td><td>{brl(c.consumed)}</td><td>{dateTime(c.lastVisit)}</td></tr>
             ))}
           </tbody>
         </table>
         {st.data?.length === 0 && <p className="empty">Nenhum cliente.</p>}
-        <p className="muted small">CPF e celular são exibidos mascarados (LGPD).</p>
+        <p className="muted small">O celular é exibido mascarado (LGPD).</p>
       </div>
     </>
   )
