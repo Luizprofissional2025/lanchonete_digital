@@ -118,6 +118,54 @@ route('PATCH', '/tables/:id', async (ctx) => {
   return { identifier: rows[0].identifier, qrActive: rows[0].qr_active, active: rows[0].active }
 })
 
+// Liberação forçada da mesa (gerência): encerra a conta mesmo com saldo em aberto.
+// Pedidos ainda na cozinha são cancelados; os que já saíram para entrega viram "entregue".
+route('POST', '/tables/:id/release', async (ctx) => {
+  const u = await staff(ctx, ROLES.management)
+  const id = Number(ctx.params.id)
+  if (!Number.isInteger(id)) throw new HttpError(422, 'Mesa inválida')
+  const [t] = await query('SELECT id, number, identifier FROM tables WHERE id = $1 AND restaurant_id = $2', [id, u.restaurantId])
+  if (!t) throw new HttpError(404, 'Mesa não encontrada')
+
+  const [acc] = await query(`SELECT id, identifier FROM accounts WHERE table_id = $1 AND status <> 'closed'`, [id])
+  let cancelled = 0, pending = 0
+  if (acc) {
+    const moved = await query(
+      `UPDATE orders SET
+              status       = CASE WHEN status = 'delivering' THEN 'delivered' ELSE 'cancelled' END,
+              delivered_at = CASE WHEN status = 'delivering' THEN now() ELSE delivered_at END,
+              cancelled_at = CASE WHEN status <> 'delivering' THEN now() ELSE cancelled_at END,
+              updated_at   = now()
+        WHERE account_id = $1 AND status IN ('received','preparing','ready','delivering')
+        RETURNING status`, [acc.id])
+    cancelled = moved.filter((o) => o.status === 'cancelled').length
+    await query('SELECT recalc_account($1)', [acc.id])
+    const [b] = await query('SELECT COALESCE(sum(pending), 0) AS pending FROM account_balances($1)', [acc.id])
+    pending = num(b.pending)
+  }
+
+  const [r] = await query(
+    `WITH ac AS (
+        UPDATE accounts SET status = 'closed', closed_at = now()
+         WHERE table_id = $2 AND restaurant_id = $1 AND status <> 'closed' RETURNING id
+      ), se AS (
+        UPDATE sessions SET status = 'closed', ended_at = now() WHERE table_id = $2 AND status = 'active' RETURNING 1
+      ), al AS (
+        UPDATE alerts SET status = 'resolved', resolved_at = now(), attended_by = COALESCE(attended_by, $3)
+         WHERE table_id = $2 AND restaurant_id = $1 AND status <> 'resolved' RETURNING 1
+      ), tb AS (
+        UPDATE tables SET status = 'free', updated_at = now() WHERE id = $2 AND restaurant_id = $1 RETURNING 1
+      )
+      SELECT (SELECT count(*) FROM ac) AS accounts, (SELECT count(*) FROM se) AS sessions, (SELECT count(*) FROM al) AS alerts`,
+    [u.restaurantId, id, u.id])
+  const result = {
+    table: num(t.number), accountClosed: num(r.accounts) > 0, sessionsClosed: num(r.sessions),
+    alertsResolved: num(r.alerts), ordersCancelled: cancelled, pendingBalance: pending,
+  }
+  try { await audit(u, 'table.release', 'table', t.identifier, result) } catch { /* auditoria não desfaz a liberação */ }
+  return result
+})
+
 // ------------------------------------------------------------------ pedidos / cozinha
 const ORDERS_SQL = `
   SELECT o.identifier, o.status, o.total, o.notes, o.created_at, o.preparing_at, o.ready_at, o.delivered_at,
