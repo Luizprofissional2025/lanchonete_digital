@@ -434,3 +434,54 @@ export function AccountsPage({ toast, user }) {
     </>
   )
 }
+
+// ---------------------------------------------------------------- liberar mesa (gerência)
+export function ReleaseTablePage({ toast }) {
+  const f = useCallback(() => api.get('/tables', S), [])
+  const st = usePolling(f, 5000)
+  const [sel, setSel] = useState('')
+  const [busy, run] = useAction(toast, st.reload)
+  if (!st.data) return <Loading state={st} />
+  const busyTables = st.data.filter((t) => t.active && (t.status !== 'free' || t.account || t.activeSessions > 0))
+  const t = busyTables.find((x) => String(x.id) === sel)
+  const release = async () => {
+    if (!t) return
+    const warn = t.currentTotal > 0 ? ` Consumo atual: ${brl(t.currentTotal)}; o que não estiver pago ficará sem cobrança.` : ''
+    if (!window.confirm(`Liberar a Mesa ${t.number}? A conta será encerrada e os clientes desconectados.${warn}`)) return
+    const r = await run(() => api.post(`/tables/${t.id}/release`, {}, S))
+    if (r) {
+      toast(`Mesa ${r.table} liberada` + (r.pendingBalance > 0 ? ` · saldo não pago: ${brl(r.pendingBalance)}` : ''), 'success')
+      setSel('')
+    }
+  }
+  return (
+    <div className="panel" style={{ maxWidth: 640 }}>
+      <h3>🔓 Liberar mesa</h3>
+      <p className="muted small">
+        Use quando a mesa ficou ocupada por engano, o cliente foi embora ou é um teste. A conta é encerrada, os clientes são
+        desconectados, os chamados são resolvidos e a mesa volta a ficar livre. Pedidos que ainda não saíram da cozinha são cancelados.
+      </p>
+      {busyTables.length === 0 ? <p className="empty">Todas as mesas já estão livres.</p> : (
+        <>
+          <label className="field">Mesa que deseja liberar
+            <select value={sel} onChange={(e) => setSel(e.target.value)}>
+              <option value="">Selecione a mesa…</option>
+              {busyTables.map((x) => (
+                <option key={x.id} value={x.id}>Mesa {x.number} — {TABLE_STATUS[x.status]}{x.currentTotal > 0 ? ` · ${brl(x.currentTotal)}` : ''}</option>
+              ))}
+            </select>
+          </label>
+          {t && (
+            <div className="small muted" style={{ margin: '4px 0 12px' }}>
+              <StatusBadge tone={tableTone[t.status]}>{TABLE_STATUS[t.status]}</StatusBadge><br />
+              {t.activeSessions} cliente(s) conectado(s) · {t.openOrders} pedido(s) em aberto<br />
+              Consumo: <strong>{brl(t.currentTotal)}</strong> · {t.waiter ? `Garçom: ${t.waiter.name}` : 'Sem garçom'}
+              {t.occupiedSince && <><br />Ocupada desde {dateTime(t.occupiedSince)}</>}
+            </div>
+          )}
+          <button className="btn btn-danger" disabled={!t || busy} onClick={release}>{busy ? 'Liberando…' : 'Liberar mesa'}</button>
+        </>
+      )}
+    </div>
+  )
+}
