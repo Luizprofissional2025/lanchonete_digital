@@ -177,7 +177,26 @@ route('PATCH', '/orders/:id/status', async (ctx) => {
   if (!ORDER_STATUSES.includes(status)) throw new HttpError(422, 'Status inválido')
   if (!STATUS_ROLES[status]?.includes(u.role)) throw new HttpError(403, 'Seu perfil não pode fazer essa mudança de status')
   const [r] = await query('SELECT set_order_status($1, $2, $3, $4) AS r', [u.restaurantId, u.id, ctx.params.id, status])
-  return r.r
+
+  // Garçom que leva o pedido assume a mesa automaticamente (só se a conta ainda não tiver garçom).
+  let waiterAssumed = false
+  if (u.role === 'waiter' && ['delivering', 'delivered'].includes(status)) {
+    try {
+      const rows = await query(
+        `UPDATE accounts a SET waiter_id = $1
+           FROM orders o
+          WHERE o.identifier = $2 AND o.restaurant_id = $3 AND a.id = o.account_id AND a.restaurant_id = $3
+            AND a.waiter_id IS NULL AND a.status <> 'closed'
+        RETURNING a.identifier`,
+        [u.id, ctx.params.id, u.restaurantId])
+      waiterAssumed = rows.length > 0
+      if (waiterAssumed) {
+        await query(`SELECT app_audit($1, 'user', $2, 'account.waiter', 'account', $3, $4::jsonb)`,
+          [u.restaurantId, String(u.id), rows[0].identifier, JSON.stringify({ waiterId: u.id, auto: true })])
+      }
+    } catch { /* assumir a mesa nunca deve impedir a entrega */ }
+  }
+  return r.r && typeof r.r === 'object' ? { ...r.r, waiterAssumed } : r.r
 })
 
 // ------------------------------------------------------------------ alertas de atendimento
