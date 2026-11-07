@@ -252,6 +252,97 @@ route('POST', '/accounts/:id/fee', async (ctx) => {
 })
 
 // ------------------------------------------------------------------ limpeza de dados de teste (somente administrador)
+// Apaga o que foi consumido no período: pedidos e itens, pagamentos e as contas FECHADAS do período
+// (com compartilhamentos de WhatsApp e isenções de taxa delas). Contas abertas e mesas ficam.
+// Não é possível desfazer. Tudo ou nada: se algo falhar, nada é apagado.
+route('POST', '/reports/purge-orders', async (ctx) => {
+  const u = await staff(ctx, ['admin'])
+  const { from, to, confirm, includePayments } = ctx.body
+  if (confirm !== 'APAGAR') throw new HttpError(422, 'Digite APAGAR para confirmar')
+  if (typeof from !== 'string' || typeof to !== 'string' || !isoDate.test(from) || !isoDate.test(to) || from > to) {
+    throw new HttpError(422, 'Período inválido')
+  }
+  if ((Date.parse(to) - Date.parse(from)) / 86_400_000 > 366) throw new HttpError(422, 'Período máximo de 366 dias')
+  const withPayments = includePayments !== false
+
+  const [r] = await query(
+    `WITH rng AS (
+        SELECT ($2::date)::timestamp AT TIME ZONE $4 AS a, (($3::date + 1)::timestamp AT TIME ZONE $4) AS b
+      ), o AS (
+        SELECT o.id FROM orders o, rng
+         WHERE o.restaurant_id = $1 AND o.created_at >= rng.a AND o.created_at < rng.b
+      ), da AS (
+        SELECT ac.id FROM accounts ac, rng
+         WHERE ac.restaurant_id = $1 AND ac.status = 'closed'
+           AND ((ac.closed_at >= rng.a AND ac.closed_at < rng.b) OR (ac.opened_at >= rng.a AND ac.opened_at < rng.b))
+           AND NOT EXISTS (SELECT 1 FROM orders x WHERE x.account_id = ac.id AND x.id NOT IN (SELECT id FROM o))
+      ), di AS (
+        DELETE FROM order_items WHERE order_id IN (SELECT id FROM o) RETURNING 1
+      ), dord AS (
+        DELETE FROM orders WHERE id IN (SELECT id FROM o) AND restaurant_id = $1 RETURNING 1
+      ), dp AS (
+        DELETE FROM payments x
+         WHERE x.restaurant_id = $1
+           AND (x.account_id IN (SELECT id FROM da)
+                OR ($5::boolean AND x.confirmed_at >= (SELECT a FROM rng) AND x.confirmed_at < (SELECT b FROM rng)))
+        RETURNING 1
+      ), dws AS (
+        DELETE FROM whatsapp_shares WHERE account_id IN (SELECT id FROM da) RETURNING 1
+      ), dfw AS (
+        DELETE FROM account_fee_waivers WHERE account_id IN (SELECT id FROM da) RETURNING 1
+      ), dacc AS (
+        DELETE FROM accounts WHERE id IN (SELECT id FROM da) AND restaurant_id = $1 RETURNING 1
+      )
+      SELECT (SELECT count(*) FROM dord) AS orders, (SELECT count(*) FROM di) AS items,
+             (SELECT count(*) FROM dp) AS payments, (SELECT count(*) FROM dacc) AS accounts,
+             (SELECT count(*) FROM dws) + (SELECT count(*) FROM dfw) AS extras`,
+    [u.restaurantId, from, to, TZ, withPayments]
+  )
+  const result = { orders: num(r.orders), items: num(r.items), payments: num(r.payments), accounts: num(r.accounts), from, to }
+  try {
+    await query('SELECT app_audit($1, $2, $3, $4, $5, $6, $7::jsonb)', [
+      u.restaurantId, 'user', String(u.id), 'orders.purge', 'restaurant', String(u.restaurantId), JSON.stringify(result),
+    ])
+  } catch { /* o registro de auditoria não deve desfazer a limpeza */ }
+  return result
+})
+
+// ------------------------------------------------------------------ garçom responsável e taxa de serviço
+// Garçom assume a própria mesa (só se estiver sem garçom); gerência pode atribuir/trocar.
+route('POST', '/accounts/:id/waiter', async (ctx) => {
+  const u = await staff(ctx, ROLES.floor)
+  const target = u.role === 'waiter' ? u.id : Number(ctx.body.userId)
+  if (!Number.isInteger(target)) throw new HttpError(422, 'Informe o garçom')
+  const [acc] = await query(
+    `SELECT a.id, a.status, a.waiter_id, (SELECT name FROM users WHERE id = a.waiter_id) AS waiter_name
+       FROM accounts a WHERE a.identifier = $1 AND a.restaurant_id = $2`, [ctx.params.id, u.restaurantId])
+  if (!acc) throw new HttpError(404, 'Conta não encontrada')
+  if (acc.status === 'closed') throw new HttpError(409, 'Conta já encerrada')
+  if (u.role === 'waiter' && acc.waiter_id && Number(acc.waiter_id) !== u.id) {
+    throw new HttpError(409, `Mesa já atendida por ${acc.waiter_name}. Peça ao gerente para trocar.`)
+  }
+  const ok = await query(
+    `SELECT 1 FROM users WHERE id = $1 AND restaurant_id = $2 AND status = 'active' AND role IN ('waiter','manager','admin')`,
+    [target, u.restaurantId])
+  if (ok.length === 0) throw new HttpError(422, 'Garçom inválido ou inativo')
+  await query('UPDATE accounts SET waiter_id = $1 WHERE id = $2', [target, acc.id])
+  await query(`SELECT app_audit($1, 'user', $2, 'account.waiter', 'account', $3, $4::jsonb)`,
+    [u.restaurantId, String(u.id), ctx.params.id, JSON.stringify({ waiterId: target })])
+  return accountSummary(u, ctx.params.id)
+})
+
+// Remove/restaura a taxa de serviço de um cliente (campo "customer") ou da mesa toda (sem "customer").
+route('POST', '/accounts/:id/fee', async (ctx) => {
+  const u = await staff(ctx, ROLES.floor)
+  const remove = ctx.body.remove !== false
+  const customer = ctx.body.customer ? String(ctx.body.customer) : null
+  const reason = typeof ctx.body.reason === 'string' ? ctx.body.reason : ''
+  const [r] = await query('SELECT set_service_fee($1, $2, $3, $4, $5, $6) AS r',
+    [u.restaurantId, u.id, ctx.params.id, customer, remove, reason])
+  return r.r
+})
+
+// ------------------------------------------------------------------ limpeza de dados de teste (somente administrador)
 // Apaga os pedidos (e seus itens) criados no período e, se pedido, os pagamentos confirmados no período.
 // Não é possível desfazer. Contas e mesas não são removidas.
 route('POST', '/reports/purge-orders', async (ctx) => {
