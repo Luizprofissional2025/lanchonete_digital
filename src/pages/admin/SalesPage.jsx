@@ -44,7 +44,7 @@ const delta = (cur, prev) => {
   return <span className={p >= 0 ? 'delta-up' : 'delta-down'}>{p >= 0 ? '▲' : '▼'} {Math.abs(p).toFixed(0)}% vs período anterior</span>
 }
 
-export default function SalesPage({ toast }) {
+export default function SalesPage({ toast, user }) {
   const [kind, setKind] = useState('today')
   const [custom, setCustom] = useState({ from: isoDay(new Date()), to: isoDay(new Date()) })
   const [gran, setGran] = useState('day')
@@ -145,6 +145,43 @@ export default function SalesPage({ toast }) {
           </div>
         </>
       )}
+      {user?.role === 'admin' && valid && <PurgePanel r={r} toast={toast} onDone={st.reload} />}
     </>
+  )
+}
+
+// Limpeza de dados de teste: apaga pedidos (e opcionalmente pagamentos) do período selecionado acima.
+function PurgePanel({ r, toast, onDone }) {
+  const [text, setText] = useState('')
+  const [withPayments, setWithPayments] = useState(true)
+  const [busy, setBusy] = useState(false)
+  const run = async () => {
+    if (!window.confirm(`Apagar TODOS os pedidos de ${r.from} a ${r.to}? Isso não pode ser desfeito.`)) return
+    setBusy(true)
+    try {
+      const x = await api.post('/reports/purge-orders', { from: r.from, to: r.to, confirm: text, includePayments: withPayments }, S)
+      toast(`Apagados: ${x.orders} pedido(s), ${x.items} item(ns), ${x.payments} pagamento(s)`, 'success')
+      setText('')
+      onDone()
+    } catch (e) { toast(e.message, 'error') } finally { setBusy(false) }
+  }
+  return (
+    <div className="panel" style={{ marginTop: 24, borderLeft: '4px solid var(--danger)' }}>
+      <h3>🧪 Limpeza de dados de teste</h3>
+      <p className="muted small">
+        Apaga todos os pedidos criados de <strong>{r.from}</strong> a <strong>{r.to}</strong> (o período escolhido acima:
+        Hoje, Semana, Mês ou Personalizado). Não dá para desfazer. Mesas e contas não são removidas.
+      </p>
+      <label className="consent" style={{ margin: '8px 0' }}>
+        <input type="checkbox" checked={withPayments} onChange={(e) => setWithPayments(e.target.checked)} />
+        <span>Apagar também os pagamentos confirmados no período</span>
+      </label>
+      <div className="toolbar">
+        <input value={text} onChange={(e) => setText(e.target.value)} placeholder="Digite APAGAR para confirmar" aria-label="Confirmação" />
+        <button className="btn btn-danger" disabled={busy || text !== 'APAGAR'} onClick={run}>
+          {busy ? 'Apagando…' : 'Apagar pedidos do período'}
+        </button>
+      </div>
+    </div>
   )
 }
