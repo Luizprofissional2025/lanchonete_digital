@@ -27,3 +27,24 @@ export function beep(force = false) {
     osc.stop(ctx.currentTime + 0.7)
   } catch { /* sem áudio disponível */ }
 }
+
+// Aviso de "pedido pronto": duas notas rápidas (sobe), diferente do bipe de chamado de garçom.
+export function beepReady(force = false) {
+  if (!force && !soundPrefs.enabled()) return
+  try {
+    ctx ||= new (window.AudioContext || window.webkitAudioContext)()
+    ;[[784, 0], [1047, 0.22]].forEach(([freq, delay]) => {
+      const t = ctx.currentTime + delay
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+      osc.type = 'sine'
+      osc.frequency.value = freq
+      osc.connect(gain)
+      gain.connect(ctx.destination)
+      gain.gain.setValueAtTime(0.28, t)
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.35)
+      osc.start(t)
+      osc.stop(t + 0.35)
+    })
+  } catch { /* sem áudio disponível */ }
+}
