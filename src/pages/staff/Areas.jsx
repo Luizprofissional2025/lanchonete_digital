@@ -1,5 +1,5 @@
 import AreaShell from './AreaShell.jsx'
-import { AccountsPage, AlertsPage, KitchenPage, OrdersPage, Overview, TablesPage } from '../admin/OperationPages.jsx'
+import { AccountsPage, AlertsPage, KitchenPage, OrdersPage, Overview, ReleaseTablePage, TablesPage } from '../admin/OperationPages.jsx'
 import { CustomersPage, MenuAdminPage, QrPage } from '../admin/CatalogPages.jsx'
 import { SettingsPage, TeamPage, WaitersReportPage } from '../admin/TeamPages.jsx'
 import SalesPage from '../admin/SalesPage.jsx'
@@ -31,6 +31,7 @@ const GERENTE = {
   roles: ['manager', 'admin'],
   nav: [
     { path: 'dashboard', label: '📊 Visão geral', render: (p) => <Overview {...p} /> },
+    { path: 'liberar', label: '🔓 Liberar mesa', render: (p) => <ReleaseTablePage {...p} /> },
     { path: 'vendas', label: '📈 Vendas', render: (p) => <SalesPage {...p} /> },
     { path: 'garcons', label: '🧑‍🍳 Taxa por garçom', render: (p) => <WaitersReportPage {...p} /> },
     { path: 'cardapio', label: '🍔 Cardápio', render: (p) => <MenuAdminPage {...p} /> },
