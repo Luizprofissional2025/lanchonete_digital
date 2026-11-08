@@ -52,6 +52,24 @@ route('POST', '/accounts/:id/close', async (ctx) => {
   return r.r
 })
 
+// Encerra o atendimento de UM cliente da mesa: só ele é bloqueado; a conta e a mesa seguem abertas para os demais.
+route('POST', '/accounts/:id/checkout', async (ctx) => {
+  const u = await staff(ctx, ROLES.floor)
+  const { customer } = ctx.body
+  if (typeof customer !== 'string' || customer.length > 50) throw new HttpError(422, 'Cliente é obrigatório')
+  const [r] = await query('SELECT begin_customer_checkout($1, $2, $3, $4) AS r', [u.restaurantId, u.id, ctx.params.id, customer])
+  return r.r
+})
+
+// Desfaz o encerramento de um cliente (engano), enquanto ele ainda não pagou nada.
+route('POST', '/accounts/:id/checkout/cancel', async (ctx) => {
+  const u = await staff(ctx, ROLES.floor)
+  const { customer } = ctx.body
+  if (typeof customer !== 'string' || customer.length > 50) throw new HttpError(422, 'Cliente é obrigatório')
+  const [r] = await query('SELECT cancel_customer_checkout($1, $2, $3, $4) AS r', [u.restaurantId, u.id, ctx.params.id, customer])
+  return r.r
+})
+
 // Passo 2: pagamento confirmado por funcionário. A mesa só é liberada quando todos quitarem.
 route('POST', '/accounts/:id/payments', async (ctx) => {
   const u = await staff(ctx, ROLES.floor)
