@@ -18,6 +18,9 @@ export const dateTime = (iso) =>
   iso ? new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'
 
 const pad = (n) => String(n).padStart(2, '0')
+// "Pedido 3": número do dia (recomeça em 1 a cada dia). Cai para o código interno se o número não existir.
+export const orderLabel = (o) => (o?.number ? `Pedido ${o.number}` : (o?.id ?? o?.order ?? 'Pedido'))
+
 export const isoDay = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 
 export const ORDER_STATUS = {
