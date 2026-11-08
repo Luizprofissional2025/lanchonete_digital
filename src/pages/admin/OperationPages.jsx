@@ -1,3 +1,4 @@
+
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '../../services/api.js'
 import { usePolling } from '../../hooks/usePolling.js'
@@ -135,7 +136,17 @@ export function AccountModal({ id, toast, user, onClose }) {
   const swap = (userId) => run(() => api.post(`/accounts/${id}/waiter`, { userId: Number(userId) }, S), 'Garçom da mesa alterado')
   const close = () => run(async () => { await api.post(`/accounts/${id}/close`, {}, S); setAskClose(false) }, 'Conta fechada para novos pedidos')
   // Fechar conta: com mais de um cliente na mesa, pergunta quem encerra; os outros continuam consumindo.
-  const startClose = () => (remaining.length > 1 ? setAskClose(true) : close())
+  // O botão nunca fecha a mesa toda sozinho: com 2+ clientes pergunta quem sai; com 1 encerra só esse cliente
+  // (a mesa só é liberada se não restar mais ninguém conectado). Fechar a mesa toda é uma escolha explícita.
+  const startClose = () => {
+    if (remaining.length > 1) return setAskClose(true)
+    if (remaining.length === 1) return checkout(remaining[0])
+    return close()
+  }
+  const reopen = () => {
+    if (!window.confirm('Reabrir a conta? Quem ainda não pagou volta a poder pedir; quem já quitou sai da mesa.')) return
+    return run(() => api.post(`/accounts/${id}/reopen`, {}, S), 'Conta reaberta: os clientes ainda na mesa podem pedir')
+  }
   const checkout = (c) => run(async () => {
     const r = await api.post(`/accounts/${id}/checkout`, { customer: c.customer }, S)
     setAskClose(false)
@@ -237,6 +248,12 @@ export function AccountModal({ id, toast, user, onClose }) {
                         <button className="btn btn-sm btn-success" disabled={busy} onClick={() => payNow(c)}>Confirmar pagamento</button>
                       </>
                     )}
+                    {a.status === 'open' && !c.checkout && (
+                      <button className="btn btn-sm btn-primary" disabled={busy || (c.pending > 0 && !a.waiter)} onClick={() => checkout(c)}
+                        title={c.pending > 0 && !a.waiter ? 'Defina o garçom responsável' : 'Só este cliente encerra; os outros continuam pedindo'}>
+                        Encerrar {c.name.split(' ')[0]}
+                      </button>
+                    )}
                     {c.pending <= 0 && c.due > 0 && <StatusBadge tone="green">Quitado</StatusBadge>}
                     {c.pending <= 0 && c.due === 0 && <span className="muted small">Sem consumo</span>}
                     {c.checkout === 'pending' && c.paid === 0 && <button className="btn btn-sm btn-ghost" disabled={busy} onClick={() => cancelCheckout(c)}>Cancelar encerramento</button>}
@@ -253,6 +270,12 @@ export function AccountModal({ id, toast, user, onClose }) {
               <button className="btn btn-sm btn-ghost" disabled={busy} onClick={() => prepare(null)}>Resumo da mesa</button>
               {a.fee > 0 && feeAsk !== 'all' && <button className="btn btn-sm btn-ghost" disabled={busy} onClick={() => setFeeAsk('all')}>Remover taxa da mesa toda</button>}
               <button className="btn btn-primary" disabled={busy || !a.waiter} onClick={startClose} title={a.waiter ? '' : 'Defina o garçom responsável'}>Fechar conta</button>
+            </div>
+          )}
+          {a.status === 'awaiting_payment' && manager && (
+            <div className="panel" style={{ marginTop: 12, borderLeft: '4px solid var(--primary)' }}>
+              <p className="muted small">A mesa inteira está em fechamento e ninguém consegue pedir. Reabra para que quem ainda não pagou continue consumindo; quem já quitou sai da mesa.</p>
+              <button className="btn btn-primary" disabled={busy} onClick={reopen}>Reabrir conta</button>
             </div>
           )}
           {askClose && a.status === 'open' && (
