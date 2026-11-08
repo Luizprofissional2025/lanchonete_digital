@@ -1,4 +1,3 @@
-
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '../../services/api.js'
 import { usePolling } from '../../hooks/usePolling.js'
@@ -6,7 +5,7 @@ import Modal from '../../components/Modal.jsx'
 import { NewTableModal } from './CatalogPages.jsx'
 import { beep } from '../../utils/sound.js'
 import StatusBadge, { alertTone, orderTone, tableTone, waitTone } from '../../components/StatusBadge.jsx'
-import { ACCOUNT_STATUS, ALERT_STATUS, METHODS, ORDER_STATUS, TABLE_STATUS, WAIT_LEVEL, brl, dateTime, minutes } from '../../utils/format.js'
+import { ACCOUNT_STATUS, ALERT_STATUS, METHODS, ORDER_STATUS, TABLE_STATUS, WAIT_LEVEL, brl, dateTime, minutes, orderLabel } from '../../utils/format.js'
 
 const S = { staff: true }
 const errMsg = (e) => e?.message || 'Erro inesperado'
@@ -347,7 +346,7 @@ export function OrdersPage({ toast, user }) {
             <tbody>
               {st.data.map((o) => (
                 <tr key={o.id}>
-                  <td>{o.id}<br /><span className="muted small">{dateTime(o.createdAt)}</span></td>
+                  <td><strong>{orderLabel(o)}</strong><br /><span className="muted small">{dateTime(o.createdAt)}</span></td>
                   <td>{o.tableNumber}</td><td>{o.customerName}</td>
                   <td>{o.items.map((i, k) => <div key={k}>{i.quantity}x {i.name}</div>)}</td>
                   <td>{brl(o.total)}</td>
@@ -359,7 +358,7 @@ export function OrdersPage({ toast, user }) {
                       if (r?.waiterAssumed) toast(`Você assumiu a mesa ${o.tableNumber}`, 'success')
                       return r
                     })}>→ {ORDER_STATUS[next[o.status]]}</button>}
-                    {['received', 'preparing', 'ready'].includes(o.status) && <button className="btn btn-sm btn-danger" disabled={busy} onClick={() => window.confirm(`Cancelar ${o.id}?`) && run(() => api.patch(`/orders/${o.id}/status`, { status: 'cancelled' }, S), 'Pedido cancelado')}>Cancelar</button>}
+                    {['received', 'preparing', 'ready'].includes(o.status) && <button className="btn btn-sm btn-danger" disabled={busy} onClick={() => window.confirm(`Cancelar ${orderLabel(o)}?`) && run(() => api.patch(`/orders/${o.id}/status`, { status: 'cancelled' }, S), 'Pedido cancelado')}>Cancelar</button>}
                   </td>
                 </tr>
               ))}
@@ -403,7 +402,7 @@ export function KitchenPage({ toast }) {
                   <span className="kitchen-table">Mesa {o.tableNumber}</span>
                   <span className={`kitchen-wait ${o.waitLevel}`}>{minutes(o.waitMinutes)} · {WAIT_LEVEL[o.waitLevel]}</span>
                 </div>
-                <div className="kitchen-meta">{o.id} · {o.customerName} · {dateTime(o.createdAt)}</div>
+                <div className="kitchen-meta">{orderLabel(o)} · {o.customerName} · {dateTime(o.createdAt)}</div>
                 <ul className="kitchen-items">
                   {o.items.map((i, k) => (
                     <li key={k}><strong>{i.quantity}x {i.name}</strong>
