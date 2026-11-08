@@ -4,7 +4,7 @@ import Modal from '../components/Modal.jsx'
 import { useToast } from '../components/Toast.jsx'
 import { usePolling } from '../hooks/usePolling.js'
 import { ApiError, api, customerSession } from '../services/api.js'
-import { ORDER_STATUS, brl, newKey } from '../utils/format.js'
+import { ORDER_STATUS, brl, newKey, orderLabel } from '../utils/format.js'
 import './MenuPage.css'
 
 const STEPS = ['received', 'preparing', 'ready', 'delivered']
@@ -97,7 +97,7 @@ function MenuPage() {
       keyRef.current = null
       setSheet('orders')
       orders.reload()
-      toast(`Pedido ${res.order} enviado para a cozinha! Total ${brl(res.total)}`, 'success')
+      toast(`${orderLabel(res)} enviado para a cozinha! Total ${brl(res.total)}`, 'success')
     } catch (e) {
       handleError(e)
       loadMenu() // o item pode ter ficado indisponível
@@ -229,7 +229,7 @@ function MenuPage() {
             <ul className="order-list">
               {orders.data.map((o) => (
                 <li key={o.order}>
-                  <div className="order-head"><strong>{o.order}</strong><span>{brl(o.total)}</span></div>
+                  <div className="order-head"><strong>{orderLabel(o)}</strong><span>{brl(o.total)}</span></div>
                   {o.status === 'cancelled'
                     ? <div className="status-cancel">Pedido cancelado</div>
                     : <ol className="steps" aria-label={`Status: ${ORDER_STATUS[o.status]}`}>
