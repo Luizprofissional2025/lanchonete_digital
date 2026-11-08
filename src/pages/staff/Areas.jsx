@@ -3,6 +3,7 @@ import { AccountsPage, AlertsPage, KitchenPage, OrdersPage, Overview, ReleaseTab
 import { CustomersPage, MenuAdminPage, QrPage } from '../admin/CatalogPages.jsx'
 import { SettingsPage, TeamPage, WaitersReportPage } from '../admin/TeamPages.jsx'
 import SalesPage from '../admin/SalesPage.jsx'
+import MonthOrdersPage from '../admin/MonthOrdersPage.jsx'
 
 // 2) Salão e caixa: endereço /salao — garçons (e gerência).
 const GARCOM = {
@@ -32,6 +33,7 @@ const GERENTE = {
   nav: [
     { path: 'dashboard', label: '📊 Visão geral', render: (p) => <Overview {...p} /> },
     { path: 'liberar', label: '🔓 Liberar mesa', render: (p) => <ReleaseTablePage {...p} /> },
+    { path: 'pedidos-mes', label: '🧾 Pedidos do mês', render: (p) => <MonthOrdersPage {...p} /> },
     { path: 'vendas', label: '📈 Vendas', render: (p) => <SalesPage {...p} /> },
     { path: 'garcons', label: '🧑‍🍳 Taxa por garçom', render: (p) => <WaitersReportPage {...p} /> },
     { path: 'cardapio', label: '🍔 Cardápio', render: (p) => <MenuAdminPage {...p} /> },
