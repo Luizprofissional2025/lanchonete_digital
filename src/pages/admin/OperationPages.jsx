@@ -118,8 +118,11 @@ export function AccountModal({ id, toast, user, onClose }) {
   const [reason, setReason] = useState(REASONS[0])
   const [note, setNote] = useState('')
   const [team, setTeam] = useState([])
+  const [askClose, setAskClose] = useState(false)
   const manager = ['admin', 'manager'].includes(user.role)
   const a = st.data
+  // clientes ainda "na mesa": não encerrados
+  const remaining = (a?.customers || []).filter((c) => !c.checkout)
 
   useEffect(() => {
     if (!manager) return
@@ -130,7 +133,16 @@ export function AccountModal({ id, toast, user, onClose }) {
 
   const assume = () => run(() => api.post(`/accounts/${id}/waiter`, manager ? { userId: user.id } : {}, S), 'Você assumiu a mesa')
   const swap = (userId) => run(() => api.post(`/accounts/${id}/waiter`, { userId: Number(userId) }, S), 'Garçom da mesa alterado')
-  const close = () => run(() => api.post(`/accounts/${id}/close`, {}, S), 'Conta fechada para novos pedidos')
+  const close = () => run(async () => { await api.post(`/accounts/${id}/close`, {}, S); setAskClose(false) }, 'Conta fechada para novos pedidos')
+  // Fechar conta: com mais de um cliente na mesa, pergunta quem encerra; os outros continuam consumindo.
+  const startClose = () => (remaining.length > 1 ? setAskClose(true) : close())
+  const checkout = (c) => run(async () => {
+    const r = await api.post(`/accounts/${id}/checkout`, { customer: c.customer }, S)
+    setAskClose(false)
+    if (r.tableReleased) toast('Mesa liberada ✅', 'success')
+    else toast(c.pending > 0 ? `${c.name.split(' ')[0]} encerrado: registre o pagamento abaixo` : `${c.name.split(' ')[0]} encerrado. A mesa continua aberta`, 'success')
+  })
+  const cancelCheckout = (c) => run(() => api.post(`/accounts/${id}/checkout/cancel`, { customer: c.customer }, S), `Encerramento de ${c.name.split(' ')[0]} cancelado`)
   const removeFee = () => {
     const text = reason === 'Outro' ? note.trim() : reason
     return run(async () => {
@@ -192,7 +204,11 @@ export function AccountModal({ id, toast, user, onClose }) {
             return (
               <div className="consumer" key={c.customer}>
                 <div className="consumer-head">
-                  <strong>{c.name} <span className="muted small">{c.phoneMasked}</span></strong>
+                  <strong>{c.name} <span className="muted small">{c.phoneMasked}</span>
+                    {c.checkout === 'pending' && <> <StatusBadge tone="orange">Encerrando · receber pagamento</StatusBadge></>}
+                    {c.checkout === 'done' && <> <StatusBadge tone="green">Atendimento encerrado</StatusBadge></>}
+                    {!c.checkout && c.connected && a.status === 'open' && <> <StatusBadge tone="blue">Na mesa</StatusBadge></>}
+                  </strong>
                   <span>Total {brl(c.due)} · Pago {brl(c.paid)} · <strong>Pendente {brl(c.pending)}</strong></span>
                 </div>
                 <ul>
@@ -211,7 +227,7 @@ export function AccountModal({ id, toast, user, onClose }) {
                     {c.paid === 0 && (c.feeRemoved
                       ? <button className="btn btn-sm btn-ghost" disabled={busy} onClick={() => restoreFee(c.customer)}>Restaurar taxa</button>
                       : feeAsk !== c.customer && <button className="btn btn-sm btn-ghost" disabled={busy} onClick={() => setFeeAsk(c.customer)}>Remover taxa de serviço</button>)}
-                    {a.status === 'awaiting_payment' && c.pending > 0 && (
+                    {(a.status === 'awaiting_payment' || c.checkout === 'pending') && c.pending > 0 && (
                       <>
                         <select value={p.method || 'pix'} onChange={(e) => setPay({ ...pay, [c.customer]: { ...p, method: e.target.value } })} aria-label="Meio de pagamento">
                           {Object.entries(METHODS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
@@ -221,7 +237,9 @@ export function AccountModal({ id, toast, user, onClose }) {
                         <button className="btn btn-sm btn-success" disabled={busy} onClick={() => payNow(c)}>Confirmar pagamento</button>
                       </>
                     )}
-                    {c.pending <= 0 && <StatusBadge tone="green">Quitado</StatusBadge>}
+                    {c.pending <= 0 && c.due > 0 && <StatusBadge tone="green">Quitado</StatusBadge>}
+                    {c.pending <= 0 && c.due === 0 && <span className="muted small">Sem consumo</span>}
+                    {c.checkout === 'pending' && c.paid === 0 && <button className="btn btn-sm btn-ghost" disabled={busy} onClick={() => cancelCheckout(c)}>Cancelar encerramento</button>}
                     <button className="btn btn-sm btn-ghost" disabled={busy} onClick={() => prepare(c.customer)}>📲 WhatsApp</button>
                   </div>
                 )}
@@ -234,7 +252,24 @@ export function AccountModal({ id, toast, user, onClose }) {
             <div className="modal-actions">
               <button className="btn btn-sm btn-ghost" disabled={busy} onClick={() => prepare(null)}>Resumo da mesa</button>
               {a.fee > 0 && feeAsk !== 'all' && <button className="btn btn-sm btn-ghost" disabled={busy} onClick={() => setFeeAsk('all')}>Remover taxa da mesa toda</button>}
-              <button className="btn btn-primary" disabled={busy || !a.waiter} onClick={close} title={a.waiter ? '' : 'Defina o garçom responsável'}>Fechar conta</button>
+              <button className="btn btn-primary" disabled={busy || !a.waiter} onClick={startClose} title={a.waiter ? '' : 'Defina o garçom responsável'}>Fechar conta</button>
+            </div>
+          )}
+          {askClose && a.status === 'open' && (
+            <div className="panel" style={{ marginTop: 12, borderLeft: '4px solid var(--primary)' }} role="group" aria-label="Quem vai encerrar o atendimento">
+              <h3>Quem vai encerrar o atendimento?</h3>
+              <p className="muted small">Há mais de um cliente na mesa. Escolha quem vai pagar e sair: os outros continuam pedindo normalmente.</p>
+              <div className="modal-actions" style={{ flexWrap: 'wrap', justifyContent: 'flex-start' }}>
+                {remaining.map((c) => (
+                  <button key={c.customer} className="btn btn-primary" disabled={busy} onClick={() => checkout(c)}>
+                    {c.name.split(' ')[0]} · {c.due > 0 ? brl(c.pending) : 'sem consumo'}
+                  </button>
+                ))}
+              </div>
+              <div className="modal-actions" style={{ justifyContent: 'flex-start' }}>
+                <button className="btn btn-sm btn-ghost" disabled={busy} onClick={close}>Fechar a mesa toda (todos saem)</button>
+                <button className="btn btn-sm btn-ghost" onClick={() => setAskClose(false)}>Voltar</button>
+              </div>
             </div>
           )}
           {a.status === 'open' && !a.waiter && <p className="muted small right">Assuma a mesa para poder fechar a conta.</p>}
