@@ -61,6 +61,13 @@ route('POST', '/accounts/:id/checkout', async (ctx) => {
   return r.r
 })
 
+// Reabre uma conta que foi fechada inteira (aguardando pagamento) para quem ainda não pagou continuar consumindo.
+route('POST', '/accounts/:id/reopen', async (ctx) => {
+  const u = await staff(ctx, ROLES.management)
+  const [r] = await query('SELECT reopen_account($1, $2, $3) AS r', [u.restaurantId, u.id, ctx.params.id])
+  return r.r
+})
+
 // Desfaz o encerramento de um cliente (engano), enquanto ele ainda não pagou nada.
 route('POST', '/accounts/:id/checkout/cancel', async (ctx) => {
   const u = await staff(ctx, ROLES.floor)
