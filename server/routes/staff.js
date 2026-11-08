@@ -168,7 +168,8 @@ route('POST', '/tables/:id/release', async (ctx) => {
 
 // ------------------------------------------------------------------ pedidos / cozinha
 const ORDERS_SQL = `
-  SELECT o.identifier, o.status, o.total, o.notes, o.created_at, o.preparing_at, o.ready_at, o.delivered_at,
+  SELECT o.identifier, o.daily_number, to_char(o.order_day, 'YYYY-MM-DD') AS order_day,
+         o.status, o.total, o.notes, o.created_at, o.preparing_at, o.ready_at, o.delivered_at,
          t.number AS table_number, t.identifier AS table_code,
          c.name AS customer_name, c.identifier AS customer_code,
          EXTRACT(EPOCH FROM (COALESCE(o.ready_at, o.cancelled_at, now()) - o.created_at)) / 60 AS since_created,
@@ -190,7 +191,7 @@ async function listOrders(user, where, params, order, limit = 200) {
   return rows.map((o) => {
     const wait = Math.round(num(o.since_created) * 10) / 10
     return {
-      id: o.identifier, status: o.status, total: num(o.total), notes: o.notes, createdAt: o.created_at,
+      id: o.identifier, number: o.daily_number, day: o.order_day, status: o.status, total: num(o.total), notes: o.notes, createdAt: o.created_at,
       tableNumber: num(o.table_number), tableCode: o.table_code, customerName: o.customer_name, customerCode: o.customer_code,
       waitMinutes: wait, prepMinutes: o.prep_minutes === null ? null : Math.round(num(o.prep_minutes) * 10) / 10,
       awaitingDeliveryMinutes: o.awaiting_delivery === null ? null : Math.round(num(o.awaiting_delivery) * 10) / 10,
@@ -200,6 +201,28 @@ async function listOrders(user, where, params, order, limit = 200) {
 }
 
 const ORDER_STATUSES = ['received', 'preparing', 'ready', 'delivering', 'delivered', 'cancelled']
+
+// Histórico de pedidos por período, em ordem cronológica; cada dia tem a sua numeração (Pedido 1, 2, 3...).
+route('GET', '/orders/history', async (ctx) => {
+  const u = await staff(ctx, ROLES.management)
+  const { from, to } = ctx.query
+  const iso = /^\d{4}-\d{2}-\d{2}$/
+  if (!iso.test(from || '') || !iso.test(to || '') || from > to) throw new HttpError(422, 'Período inválido')
+  if ((Date.parse(to) - Date.parse(from)) / 86_400_000 > 366) throw new HttpError(422, 'Período máximo de 366 dias')
+  const rows = await query(
+    `SELECT o.identifier, o.daily_number, to_char(o.order_day, 'YYYY-MM-DD') AS day, o.status, o.total, o.created_at,
+            t.number AS table_number, c.name AS customer_name,
+            (SELECT string_agg(oi.quantity || 'x ' || oi.product_name, ', ' ORDER BY oi.id) FROM order_items oi WHERE oi.order_id = o.id) AS items
+       FROM orders o JOIN tables t ON t.id = o.table_id JOIN customers c ON c.id = o.customer_id
+      WHERE o.restaurant_id = $1 AND o.order_day BETWEEN $2::date AND $3::date
+      ORDER BY o.order_day, o.daily_number
+      LIMIT 5000`,
+    [u.restaurantId, from, to])
+  return rows.map((o) => ({
+    id: o.identifier, number: o.daily_number, day: o.day, status: o.status, total: num(o.total), createdAt: o.created_at,
+    tableNumber: num(o.table_number), customerName: o.customer_name, items: o.items || '',
+  }))
+})
 
 route('GET', '/orders', async (ctx) => {
   const u = await staff(ctx, ROLES.floor)
