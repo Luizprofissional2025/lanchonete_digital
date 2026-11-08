@@ -6,6 +6,7 @@ import { beep, beepReady, soundPrefs } from '../../utils/sound.js'
 import { useToast } from '../../components/Toast.jsx'
 import '../admin/Dashboard.css'
 import '../CustomerIdentification.css'
+import { orderLabel } from '../../utils/format.js'
 
 export const HOME_BY_ROLE = { waiter: '/salao', kitchen: '/cozinha', manager: '/gerencia', admin: '/gerencia' }
 
@@ -104,7 +105,7 @@ function Frame({ area, user, onLogout }) {
     const fresh = readyState.data.filter((o) => seenReady.current && !seenReady.current.has(o.id))
     if (fresh.length) {
       beepReady()
-      toast(`✅ Pedido pronto — Mesa ${fresh[0].tableNumber}${fresh.length > 1 ? ` (+${fresh.length - 1})` : ''}`, 'success')
+      toast(`✅ ${orderLabel(fresh[0])} pronto — Mesa ${fresh[0].tableNumber}${fresh.length > 1 ? ` (+${fresh.length - 1})` : ''}`, 'success')
     }
     seenReady.current = new Set(readyState.data.map((o) => o.id))
     // eslint-disable-next-line react-hooks/exhaustive-deps
